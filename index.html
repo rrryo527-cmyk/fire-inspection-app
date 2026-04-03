@@ -399,6 +399,18 @@ mark {
 .sr-cat-general { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
 .sr-parent { font-size: 0.7rem; opacity: 0.4; }
 
+/* ===== Search Highlight Animation ===== */
+.search-highlight {
+  outline: 2px solid #5dade2 !important;
+  outline-offset: 4px;
+  animation: highlightPulse 0.5s ease-out;
+}
+@keyframes highlightPulse {
+  0% { outline-color: transparent; }
+  50% { outline-color: #5dade2; }
+  100% { outline-color: #5dade2; }
+}
+
 /* ===== Level-3 Sub-navigation ===== */
 .nav-level3 { padding-left: 48px; font-size: 0.7rem; opacity: 0.7; display: block; color: rgba(255,255,255,0.55); cursor: pointer; padding-top: 5px; padding-bottom: 5px; text-decoration: none; transition: all 0.15s; }
 .nav-level3::before { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.3); margin-right: 6px; vertical-align: middle; }
@@ -560,94 +572,92 @@ function doSearch(query) {
   const content = document.getElementById('content');
   const activeFilter = document.querySelector('.filter-btn.active')?.dataset.filter || 'all';
 
-  // Remove old highlights
-  content.querySelectorAll('mark').forEach(m => m.replaceWith(m.textContent));
-
   if (!query || query.length < 2) { panel.classList.remove('open'); panel.innerHTML = ''; return; }
 
-  // Search through more specific elements for better results
-  const searchables = content.querySelectorAll('.insp-item, .card, .caution-box, .info-box, .note-box, .law-box, [class*="section-title"], [class*="subsection-title"]');
   const results = [];
-  const seen = new Set();
-  const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(escapedQuery, 'gi');
+  const lowerQuery = query.toLowerCase();
 
-  searchables.forEach(el => {
+  // Build a flat index of all text content with category info
+  // Walk through ALL elements in #content that contain text
+  const allElements = content.querySelectorAll('.insp-item, .card.glass, .caution-box, .info-box, .note-box, .law-box, .table-wrap, .collapsible');
+
+  allElements.forEach(el => {
     const text = el.textContent;
-    if (!regex.test(text)) return;
-    regex.lastIndex = 0;
+    if (!text.toLowerCase().includes(lowerQuery)) return;
 
-    // Determine category
-    let category = '一般';
-    const parentText = el.closest('[id]')?.querySelector('.subsection-title, .sub-subsection-title')?.textContent || '';
-    const sectionText = getAncestorSectionTitle(el);
-    if (/設置基準|設置対象|設置義務/.test(parentText) || /設置基準/.test(sectionText)) category = '設置基準';
-    else if (/総合点検/.test(sectionText) || /総合点検/.test(parentText)) category = '総合点検';
-    else if (/機器点検/.test(sectionText) || /機器点検/.test(parentText) || el.classList.contains('insp-item')) category = '機器点検';
-    else if (/留意事項|注意/.test(parentText) || el.classList.contains('caution-box') || el.classList.contains('note-box')) category = '留意事項';
+    // Determine category by walking up to find the nearest subsection-title
+    const category = detectCategory(el);
 
     // Apply filter
     if (activeFilter !== 'all' && category !== activeFilter) return;
 
-    // Get title
+    // Get a meaningful title for this result
     let title = '';
     const itemTitle = el.querySelector('.insp-item-title');
-    if (itemTitle) title = itemTitle.textContent;
-    else {
-      const heading = el.querySelector('.section-title, .subsection-title, .sub-subsection-title');
-      if (heading) title = heading.textContent;
-      else title = el.textContent.substring(0, 50);
+    if (itemTitle) {
+      title = itemTitle.textContent.trim();
+    } else if (el.classList.contains('caution-box')) {
+      const ct = el.querySelector('.caution-title');
+      title = ct ? ct.textContent.trim() : '注意事項';
+    } else if (el.classList.contains('info-box')) {
+      const it = el.querySelector('.info-title');
+      title = it ? it.textContent.trim() : '情報';
+    } else if (el.classList.contains('note-box')) {
+      const nt = el.querySelector('.note-title');
+      title = nt ? nt.textContent.trim() : '備考';
+    } else if (el.classList.contains('law-box')) {
+      const lt = el.querySelector('.law-title');
+      title = lt ? lt.textContent.trim() : '法令';
+    } else {
+      title = text.substring(0, 40).replace(/\s+/g, ' ').trim();
     }
 
-    // Get parent section name
-    const parentSection = el.closest('[id]');
-    const parentHeading = parentSection?.querySelector('.section-title, .chapter-title');
-    const parentName = parentHeading ? parentHeading.textContent.trim() : '';
+    // Find which equipment section this belongs to
+    const parentSection = findParentSection(el);
+    const parentName = parentSection ? parentSection.replace(/\s+/g, ' ').trim() : '';
 
-    // Get context with highlighted match
-    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    // Extract context around the match
+    const idx = text.toLowerCase().indexOf(lowerQuery);
+    if (idx === -1) return;
     const start = Math.max(0, idx - 30);
     const end = Math.min(text.length, idx + query.length + 50);
-    const context = (start > 0 ? '...' : '') + text.substring(start, end).replace(regex, '<mark>$&</mark>') + (end < text.length ? '...' : '');
+    let context = text.substring(start, end).replace(/\s+/g, ' ');
+    context = (start > 0 ? '...' : '') + context.replace(regex, '<mark>$&</mark>') + (end < text.length ? '...' : '');
 
-    // Dedup by title + parent
-    const key = title + parentName;
-    if (seen.has(key)) return;
-    seen.add(key);
-
-    // Find scrollable target
-    const targetId = parentSection?.id || '';
-
-    results.push({ title: title.substring(0, 60), context, category, parentName, targetEl: el, targetId });
+    results.push({ title: title.substring(0, 60), context, category, parentName, el });
   });
 
+  // Render results
   if (results.length === 0) {
     panel.innerHTML = '<div class="search-count">検索結果なし</div>';
   } else {
-    panel.innerHTML = `
-      <div class="search-count">${results.length}件の一致</div>
-      ${results.slice(0, 50).map((r, i) => `
-        <div class="glass search-result-item" data-idx="${i}">
-          <div class="sr-header">
-            <span class="sr-category sr-cat-${getCatClass(r.category)}">${r.category}</span>
-            <span class="sr-parent">${r.parentName}</span>
-          </div>
-          <div class="sr-title">${r.title}</div>
-          <div class="sr-context">${r.context}</div>
-        </div>
-      `).join('')}
-      ${results.length > 50 ? '<div class="search-count">他 ' + (results.length - 50) + ' 件...</div>' : ''}
-    `;
-    // Store results for click handling
+    const catColors = { '設置基準': 'standard', '機器点検': 'equipment', '総合点検': 'comprehensive', '留意事項': 'note', '一般': 'general' };
+    panel.innerHTML =
+      '<div class="search-count">' + results.length + '件の一致</div>' +
+      results.slice(0, 80).map((r, i) =>
+        '<div class="glass search-result-item" data-ridx="' + i + '">' +
+          '<div class="sr-header">' +
+            '<span class="sr-category sr-cat-' + (catColors[r.category] || 'general') + '">' + r.category + '</span>' +
+            '<span class="sr-parent">' + r.parentName + '</span>' +
+          '</div>' +
+          '<div class="sr-title">' + r.title + '</div>' +
+          '<div class="sr-context">' + r.context + '</div>' +
+        '</div>'
+      ).join('') +
+      (results.length > 80 ? '<div class="search-count">他 ' + (results.length - 80) + ' 件...</div>' : '');
+
+    // Store results globally for click handler
     window._searchResults = results;
     panel.querySelectorAll('.search-result-item').forEach(el => {
       el.addEventListener('click', () => {
-        const idx = parseInt(el.dataset.idx);
-        const r = window._searchResults[idx];
-        if (r && r.targetEl) {
-          r.targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          r.targetEl.style.outline = '2px solid #5dade2';
-          r.targetEl.style.outlineOffset = '4px';
-          setTimeout(() => { r.targetEl.style.outline = ''; r.targetEl.style.outlineOffset = ''; }, 3000);
+        const i = parseInt(el.dataset.ridx);
+        const r = window._searchResults[i];
+        if (r && r.el) {
+          r.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          r.el.classList.add('search-highlight');
+          setTimeout(() => r.el.classList.remove('search-highlight'), 3000);
         }
       });
     });
@@ -655,26 +665,74 @@ function doSearch(query) {
   panel.classList.add('open');
 }
 
-function getAncestorSectionTitle(el) {
-  let node = el;
-  while (node && node.id !== 'content') {
-    const prev = node.previousElementSibling;
-    if (prev) {
-      const title = prev.querySelector?.('.subsection-title, .sub-subsection-title');
-      if (title) return title.textContent;
-      if (prev.classList?.contains('subsection-title') || prev.classList?.contains('sub-subsection-title')) return prev.textContent;
+// Detect category by walking backward through siblings to find subsection-title
+function detectCategory(el) {
+  // Check if inside a collapsible that has category info in its header
+  const collapsible = el.closest('.collapsible');
+  if (collapsible) {
+    const header = collapsible.querySelector('.collapsible-header');
+    if (header) {
+      const ht = header.textContent;
+      if (/総合点検/.test(ht)) return '総合点検';
+      if (/機器点検/.test(ht)) return '機器点検';
+      if (/設置基準/.test(ht)) return '設置基準';
     }
-    node = node.parentElement;
   }
-  return '';
+
+  // Walk up and backward through DOM to find nearest subsection-title or sub-subsection-title
+  let node = el.previousElementSibling;
+  let depth = 0;
+  while (!node && el.parentElement && depth < 10) {
+    el = el.parentElement;
+    node = el.previousElementSibling;
+    depth++;
+  }
+  let maxWalk = 30;
+  while (node && maxWalk-- > 0) {
+    const text = node.textContent || '';
+    if (node.classList && (node.classList.contains('subsection-title') || node.classList.contains('sub-subsection-title'))) {
+      if (/総合点検/.test(text)) return '総合点検';
+      if (/機器点検/.test(text)) return '機器点検';
+      if (/設置基準|設置対象/.test(text)) return '設置基準';
+      if (/留意事項/.test(text)) return '留意事項';
+    }
+    if (node.classList && node.classList.contains('section-title')) break; // stop at section boundary
+    node = node.previousElementSibling;
+  }
+
+  // Fallback: check element type
+  if (el.classList && (el.classList.contains('caution-box') || el.classList.contains('note-box'))) return '留意事項';
+  if (el.classList && el.classList.contains('law-box')) return '設置基準';
+  if (el.classList && el.classList.contains('insp-item')) return '機器点検';
+
+  return '一般';
 }
 
-function getCatClass(cat) {
-  if (cat === '設置基準') return 'standard';
-  if (cat === '機器点検') return 'equipment';
-  if (cat === '総合点検') return 'comprehensive';
-  if (cat === '留意事項') return 'note';
-  return 'general';
+// Find the parent section name (e.g. "2-1　消火器具")
+function findParentSection(el) {
+  let node = el;
+  let depth = 0;
+  while (node && depth < 20) {
+    if (node.id && node.id.match(/^s\d/)) {
+      const title = node.querySelector('.section-title');
+      if (title) return title.textContent;
+    }
+    // Also check previous siblings at this level
+    let prev = node.previousElementSibling;
+    while (prev) {
+      if (prev.id && prev.id.match(/^s\d/)) {
+        const title = prev.querySelector('.section-title');
+        if (title) return title.textContent;
+      }
+      if (prev.querySelector && prev.querySelector('.section-title')) {
+        return prev.querySelector('.section-title').textContent;
+      }
+      prev = prev.previousElementSibling;
+    }
+    node = node.parentElement;
+    depth++;
+  }
+  return '';
 }
 
 // ============================================================
