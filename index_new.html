@@ -356,6 +356,53 @@ mark {
   .sidebar-close { display: none; }
   .menu-btn { display: none; }
 }
+
+/* ===== Search Filters ===== */
+.search-filters {
+  display: flex;
+  gap: 6px;
+  padding: 0 0 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.search-filters::-webkit-scrollbar { display: none; }
+.filter-btn {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.6);
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.filter-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.filter-btn.active {
+  background: rgba(93,173,226,0.2);
+  border-color: rgba(93,173,226,0.4);
+  color: #5dade2;
+}
+
+/* ===== Search Result Category Tags ===== */
+.sr-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.sr-category {
+  padding: 2px 8px; border-radius: 10px; font-size: 0.65rem; font-weight: 600;
+  white-space: nowrap;
+}
+.sr-cat-standard { background: rgba(155,89,182,0.2); color: #bb8fce; }
+.sr-cat-equipment { background: rgba(52,152,219,0.2); color: #5dade2; }
+.sr-cat-comprehensive { background: rgba(46,204,113,0.2); color: #2ecc71; }
+.sr-cat-note { background: rgba(241,196,15,0.2); color: #f1c40f; }
+.sr-cat-general { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
+.sr-parent { font-size: 0.7rem; opacity: 0.4; }
+
+/* ===== Level-3 Sub-navigation ===== */
+.nav-level3 { padding-left: 48px; font-size: 0.7rem; opacity: 0.7; display: block; color: rgba(255,255,255,0.55); cursor: pointer; padding-top: 5px; padding-bottom: 5px; text-decoration: none; transition: all 0.15s; }
+.nav-level3::before { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.3); margin-right: 6px; vertical-align: middle; }
+.nav-level3:hover { color: #fff; opacity: 1; background: rgba(255,255,255,0.06); }
 </style>
 </head>
 <body>
@@ -381,6 +428,15 @@ mark {
       <span class="search-icon">🔍</span>
       <input type="text" id="searchInput" placeholder="キーワードで検索（例: スプリンクラー、放水圧力、耐圧試験）">
     </div>
+  </div>
+
+  <!-- Search Filters -->
+  <div class="search-filters" id="searchFilters">
+    <button class="filter-btn active" data-filter="all">全て</button>
+    <button class="filter-btn" data-filter="設置基準">設置基準</button>
+    <button class="filter-btn" data-filter="機器点検">機器点検</button>
+    <button class="filter-btn" data-filter="総合点検">総合点検</button>
+    <button class="filter-btn" data-filter="留意事項">留意事項</button>
   </div>
 
   <!-- Search Results -->
@@ -502,43 +558,123 @@ function initSearch() {
 function doSearch(query) {
   const panel = document.getElementById('searchResults');
   const content = document.getElementById('content');
+  const activeFilter = document.querySelector('.filter-btn.active')?.dataset.filter || 'all';
+
+  // Remove old highlights
   content.querySelectorAll('mark').forEach(m => m.replaceWith(m.textContent));
+
   if (!query || query.length < 2) { panel.classList.remove('open'); panel.innerHTML = ''; return; }
-  const sections = content.querySelectorAll('[id]');
+
+  // Search through more specific elements for better results
+  const searchables = content.querySelectorAll('.insp-item, .card, .caution-box, .info-box, .note-box, .law-box, [class*="section-title"], [class*="subsection-title"]');
   const results = [];
+  const seen = new Set();
   const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-  sections.forEach(sec => {
-    const text = sec.textContent;
-    if (regex.test(text)) {
-      const heading = sec.querySelector('.chapter-title, .section-title, .subsection-title');
-      const title = heading ? heading.textContent : sec.id;
-      const idx = text.toLowerCase().indexOf(query.toLowerCase());
-      const start = Math.max(0, idx - 40);
-      const end = Math.min(text.length, idx + query.length + 60);
-      const context = (start > 0 ? '...' : '') + text.substring(start, end) + (end < text.length ? '...' : '');
-      results.push({ id: sec.id, title, context });
+
+  searchables.forEach(el => {
+    const text = el.textContent;
+    if (!regex.test(text)) return;
+    regex.lastIndex = 0;
+
+    // Determine category
+    let category = '一般';
+    const parentText = el.closest('[id]')?.querySelector('.subsection-title, .sub-subsection-title')?.textContent || '';
+    const sectionText = getAncestorSectionTitle(el);
+    if (/設置基準|設置対象|設置義務/.test(parentText) || /設置基準/.test(sectionText)) category = '設置基準';
+    else if (/総合点検/.test(sectionText) || /総合点検/.test(parentText)) category = '総合点検';
+    else if (/機器点検/.test(sectionText) || /機器点検/.test(parentText) || el.classList.contains('insp-item')) category = '機器点検';
+    else if (/留意事項|注意/.test(parentText) || el.classList.contains('caution-box') || el.classList.contains('note-box')) category = '留意事項';
+
+    // Apply filter
+    if (activeFilter !== 'all' && category !== activeFilter) return;
+
+    // Get title
+    let title = '';
+    const itemTitle = el.querySelector('.insp-item-title');
+    if (itemTitle) title = itemTitle.textContent;
+    else {
+      const heading = el.querySelector('.section-title, .subsection-title, .sub-subsection-title');
+      if (heading) title = heading.textContent;
+      else title = el.textContent.substring(0, 50);
     }
+
+    // Get parent section name
+    const parentSection = el.closest('[id]');
+    const parentHeading = parentSection?.querySelector('.section-title, .chapter-title');
+    const parentName = parentHeading ? parentHeading.textContent.trim() : '';
+
+    // Get context with highlighted match
+    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    const start = Math.max(0, idx - 30);
+    const end = Math.min(text.length, idx + query.length + 50);
+    const context = (start > 0 ? '...' : '') + text.substring(start, end).replace(regex, '<mark>$&</mark>') + (end < text.length ? '...' : '');
+
+    // Dedup by title + parent
+    const key = title + parentName;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    // Find scrollable target
+    const targetId = parentSection?.id || '';
+
+    results.push({ title: title.substring(0, 60), context, category, parentName, targetEl: el, targetId });
   });
+
   if (results.length === 0) {
     panel.innerHTML = '<div class="search-count">検索結果なし</div>';
   } else {
     panel.innerHTML = `
       <div class="search-count">${results.length}件の一致</div>
-      ${results.map(r => `
-        <div class="glass search-result-item" data-target="${r.id}">
+      ${results.slice(0, 50).map((r, i) => `
+        <div class="glass search-result-item" data-idx="${i}">
+          <div class="sr-header">
+            <span class="sr-category sr-cat-${getCatClass(r.category)}">${r.category}</span>
+            <span class="sr-parent">${r.parentName}</span>
+          </div>
           <div class="sr-title">${r.title}</div>
           <div class="sr-context">${r.context}</div>
         </div>
       `).join('')}
+      ${results.length > 50 ? '<div class="search-count">他 ' + (results.length - 50) + ' 件...</div>' : ''}
     `;
+    // Store results for click handling
+    window._searchResults = results;
     panel.querySelectorAll('.search-result-item').forEach(el => {
       el.addEventListener('click', () => {
-        const target = document.getElementById(el.dataset.target);
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const idx = parseInt(el.dataset.idx);
+        const r = window._searchResults[idx];
+        if (r && r.targetEl) {
+          r.targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          r.targetEl.style.outline = '2px solid #5dade2';
+          r.targetEl.style.outlineOffset = '4px';
+          setTimeout(() => { r.targetEl.style.outline = ''; r.targetEl.style.outlineOffset = ''; }, 3000);
+        }
       });
     });
   }
   panel.classList.add('open');
+}
+
+function getAncestorSectionTitle(el) {
+  let node = el;
+  while (node && node.id !== 'content') {
+    const prev = node.previousElementSibling;
+    if (prev) {
+      const title = prev.querySelector?.('.subsection-title, .sub-subsection-title');
+      if (title) return title.textContent;
+      if (prev.classList?.contains('subsection-title') || prev.classList?.contains('sub-subsection-title')) return prev.textContent;
+    }
+    node = node.parentElement;
+  }
+  return '';
+}
+
+function getCatClass(cat) {
+  if (cat === '設置基準') return 'standard';
+  if (cat === '機器点検') return 'equipment';
+  if (cat === '総合点検') return 'comprehensive';
+  if (cat === '留意事項') return 'note';
+  return 'general';
 }
 
 // ============================================================
@@ -7764,11 +7900,69 @@ function buildChapter8() {
 }
 
 // ============================================================
+//  BUILD SUB-NAV (Level-3 navigation from content subsections)
+// ============================================================
+function buildSubNav() {
+  const nav = document.getElementById('sidebarNav');
+  const navItems = nav.querySelectorAll('.nav-item.nav-sub');
+  navItems.forEach(navItem => {
+    const targetId = navItem.dataset.target;
+    const targetEl = document.getElementById(targetId);
+    if (!targetEl) return;
+
+    // Collect subsection-titles that belong to this section
+    // They may be direct children or inside the section element
+    const allSubsections = [];
+
+    // First check inside the target element itself
+    const innerSubs = targetEl.querySelectorAll('.subsection-title');
+    innerSubs.forEach(s => allSubsections.push(s));
+
+    // Also check subsequent siblings until next section
+    let el = targetEl.nextElementSibling;
+    while (el) {
+      if (el.id && el.id.startsWith('s') && el.id !== targetId) break;
+      if (el.id && (el.id.startsWith('ch') || el.querySelector?.('.chapter-title'))) break;
+      if (el.classList?.contains('subsection-title')) {
+        allSubsections.push(el);
+      }
+      const nested = el.querySelectorAll('.subsection-title');
+      nested.forEach(s => allSubsections.push(s));
+      el = el.nextElementSibling;
+    }
+
+    if (allSubsections.length === 0) return;
+
+    // Assign IDs and create sub-nav links
+    const subNavHtml = allSubsections.map((sub, idx) => {
+      if (!sub.id) {
+        sub.id = targetId + '-sub' + idx;
+      }
+      let label = sub.textContent.replace(/^■\s*/, '').trim();
+      // Shorten long labels
+      if (label.length > 25) label = label.substring(0, 25) + '...';
+      return '<a class="nav-item nav-level3" data-target="' + sub.id + '">' + label + '</a>';
+    }).join('');
+
+    navItem.insertAdjacentHTML('afterend', subNavHtml);
+  });
+
+  // Add click handlers for level-3 items
+  nav.querySelectorAll('.nav-level3').forEach(el => {
+    el.addEventListener('click', () => {
+      const target = document.getElementById(el.dataset.target);
+      if (target) { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); closeSidebar(); }
+    });
+  });
+}
+
+// ============================================================
 //  INIT
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
   renderSidebar();
   buildContent();
+  buildSubNav();
   initSearch();
   initCollapsibles();
   initBackTop();
@@ -7777,6 +7971,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('menuBtn').addEventListener('click', openSidebar);
   document.getElementById('sidebarClose').addEventListener('click', closeSidebar);
   document.getElementById('sidebarOverlay').addEventListener('click', closeSidebar);
+
+  // Filter button click handlers
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const query = document.getElementById('searchInput').value.trim();
+      if (query.length >= 2) doSearch(query);
+    });
+  });
 });
 </script>
 </body>
