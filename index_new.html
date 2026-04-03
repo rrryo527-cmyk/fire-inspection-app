@@ -665,6 +665,73 @@ function doSearch(query) {
   panel.classList.add('open');
 }
 
+// Show all items of a specific category (when filter button clicked without search text)
+function showCategoryList(category) {
+  const panel = document.getElementById('searchResults');
+  const content = document.getElementById('content');
+  const results = [];
+
+  // Scan all subsection-titles to find matching category sections
+  const allSubs = content.querySelectorAll('.subsection-title, .sub-subsection-title');
+  allSubs.forEach(sub => {
+    const text = sub.textContent || '';
+    let matched = false;
+    if (category === '設置基準' && /設置基準|設置対象|性能基準|基本仕様/.test(text)) matched = true;
+    if (category === '機器点検' && /機器点検/.test(text)) matched = true;
+    if (category === '総合点検' && /総合点検/.test(text)) matched = true;
+    if (category === '留意事項' && /留意事項/.test(text)) matched = true;
+    if (!matched) return;
+
+    // Find parent section name
+    const parentName = findParentSection(sub);
+    const label = text.replace(/^■\s*/, '').trim();
+
+    results.push({ label, parentName, el: sub });
+  });
+
+  // Also collect caution/note boxes for 留意事項
+  if (category === '留意事項') {
+    const boxes = content.querySelectorAll('.caution-box, .note-box');
+    boxes.forEach(box => {
+      const titleEl = box.querySelector('.caution-title, .note-title');
+      const label = titleEl ? titleEl.textContent.trim() : '注意事項';
+      const parentName = findParentSection(box);
+      results.push({ label, parentName, el: box });
+    });
+  }
+
+  if (results.length === 0) {
+    panel.innerHTML = '<div class="search-count">「' + category + '」に該当する項目はありません</div>';
+  } else {
+    const catColors = { '設置基準': 'standard', '機器点検': 'equipment', '総合点検': 'comprehensive', '留意事項': 'note' };
+    panel.innerHTML =
+      '<div class="search-count">' + category + ' — ' + results.length + '件</div>' +
+      results.map((r, i) =>
+        '<div class="glass search-result-item" data-cidx="' + i + '">' +
+          '<div class="sr-header">' +
+            '<span class="sr-category sr-cat-' + (catColors[category] || 'general') + '">' + category + '</span>' +
+            '<span class="sr-parent">' + r.parentName + '</span>' +
+          '</div>' +
+          '<div class="sr-title">' + r.label + '</div>' +
+        '</div>'
+      ).join('');
+
+    window._catResults = results;
+    panel.querySelectorAll('.search-result-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const i = parseInt(el.dataset.cidx);
+        const r = window._catResults[i];
+        if (r && r.el) {
+          r.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          r.el.classList.add('search-highlight');
+          setTimeout(() => r.el.classList.remove('search-highlight'), 3000);
+        }
+      });
+    });
+  }
+  panel.classList.add('open');
+}
+
 // Detect category by walking backward through siblings to find subsection-title
 function detectCategory(el) {
   // Check if inside a collapsible that has category info in its header
@@ -8035,8 +8102,19 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      const filter = btn.dataset.filter;
       const query = document.getElementById('searchInput').value.trim();
-      if (query.length >= 2) doSearch(query);
+
+      if (filter === 'all') {
+        // 「全て」→ 検索文字があれば全検索、なければパネル閉じる
+        if (query.length >= 2) { doSearch(query); } else { document.getElementById('searchResults').classList.remove('open'); document.getElementById('searchResults').innerHTML = ''; }
+      } else if (query.length >= 2) {
+        // 検索文字あり → フィルタ付き検索
+        doSearch(query);
+      } else {
+        // 検索文字なし → カテゴリ別一覧表示
+        showCategoryList(filter);
+      }
     });
   });
 });
