@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>法定検査マニュアル — 消防設備点検完全ガイド</title>
+<title>法令検査マニュアル — 消防設備点検完全ガイド</title>
 <style>
 :root {
   --primary: #1a5276;
@@ -375,7 +375,7 @@ body {
 <!-- Header -->
 <header class="app-header">
   <button class="back-btn" id="backBtn" onclick="goBack()">←</button>
-  <div class="header-title" id="headerTitle">法定検査マニュアル</div>
+  <div class="header-title" id="headerTitle">法令検査マニュアル</div>
 </header>
 
 <!-- Main Content -->
@@ -384,7 +384,7 @@ body {
 <!-- ===== GENRE SELECT VIEW ===== -->
 <div class="view active" id="view-genre">
   <div class="home-hero">
-    <h1>法定検査マニュアル</h1>
+    <h1>法令検査マニュアル</h1>
     <p>ジャンルを選択してください</p>
   </div>
   <div class="genre-grid">
@@ -410,7 +410,7 @@ body {
     </div>
   </div>
   <footer class="app-footer">
-    法定検査マニュアル v4.0 — 株式会社TMS<br>
+    法令検査マニュアル v4.0 — 株式会社TMS<br>
     本資料は社外秘です。無断転載・外部持出禁止
   </footer>
 </div>
@@ -418,7 +418,7 @@ body {
 <!-- ===== HOME VIEW ===== -->
 <div class="view" id="view-home">
   <div class="home-hero">
-    <h1>法定検査マニュアル</h1>
+    <h1>法令検査マニュアル</h1>
     <p>消防設備点検 完全ガイド — 全28設備対応</p>
   </div>
 
@@ -437,7 +437,7 @@ body {
   <div class="toc" id="tocContainer"></div>
 
   <footer class="app-footer">
-    法定検査マニュアル v4.0 — 株式会社TMS<br>
+    法令検査マニュアル v4.0 — 株式会社TMS<br>
     本資料は社外秘です。無断転載・外部持出禁止
   </footer>
 </div>
@@ -5753,7 +5753,7 @@ function switchView(viewId) {
 function showGenre() {
   currentGenre = null;
   switchView('genre');
-  document.getElementById('headerTitle').textContent = '法定検査マニュアル';
+  document.getElementById('headerTitle').textContent = '法令検査マニュアル';
   document.getElementById('backBtn').classList.remove('visible');
 }
 
@@ -5782,7 +5782,7 @@ function goBack() {
     // 詳細 → マニュアル目次
     const genreData = DATA[currentGenre];
     switchView('home');
-    document.getElementById('headerTitle').textContent = genreData ? genreData.title : '法定検査マニュアル';
+    document.getElementById('headerTitle').textContent = genreData ? genreData.title : '法令検査マニュアル';
     document.getElementById('backBtn').classList.add('visible');
   } else if (currentView === 'home') {
     // マニュアル目次 → ジャンル選択
