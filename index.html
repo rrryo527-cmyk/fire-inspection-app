@@ -332,9 +332,10 @@ body {
 
 /* Print */
 @media print {
+  .login-screen { display: none !important; }
   .app-header, .search-container, .back-btn { display: none !important; }
-  .content { padding-top: 0 !important; }
-  .view { display: block !important; }
+  .content { padding-top: 0 !important; display: block !important; }
+  .view.active { display: block !important; }
 }
 
 /* 5列テーブルの項目名スパン（モバイルのみ表示） */
@@ -643,6 +644,10 @@ body {
 <!-- ===== DETAIL VIEW (動的生成) ===== -->
 <div class="view" id="view-detail">
   <div class="detail-view" id="detailContent"></div>
+  <footer class="app-footer">
+    法令検査マニュアル v4.0 — 株式会社TMS<br>
+    本資料は社外秘です。無断転載・外部持出禁止
+  </footer>
 </div>
 
 </main>
