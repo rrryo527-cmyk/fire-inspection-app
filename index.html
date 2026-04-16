@@ -337,9 +337,119 @@ body {
   .view { display: block !important; }
 }
 
-/* Responsive table scroll */
-@media (max-width: 500px) {
-  .info-block table { display: block; overflow-x: auto; white-space: nowrap; }
+/* 5列テーブルの項目名スパン（モバイルのみ表示） */
+.m-item { display: none; }
+
+/* ==============================
+   モバイル: カード + 折りたたみ表示
+   ============================== */
+@media (max-width: 768px) {
+  /* テーブルのヘッダー行を非表示 */
+  .info-block table thead,
+  .info-block table tr:first-child:has(th) {
+    display: none;
+  }
+  .info-block table {
+    display: block;
+    border: none;
+  }
+  .info-block table tbody {
+    display: block;
+  }
+  .info-block table tr {
+    display: block;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .info-block table td {
+    display: block;
+    border: none;
+    padding: 10px 14px;
+    font-size: 13px;
+    position: relative;
+  }
+  /* 1列目: 項目名 — 常に表示、タップ可能 */
+  .info-block table td:first-child {
+    background: linear-gradient(135deg, #eaf2f8, #f0f5fa);
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--primary);
+    padding: 12px 14px;
+    padding-right: 36px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+  }
+  /* 展開アイコン */
+  .info-block table td:first-child::after {
+    content: '\25BC';
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: var(--primary-light);
+    transition: transform 0.2s;
+  }
+  .info-block table tr.expanded td:first-child::after {
+    transform: translateY(-50%) rotate(180deg);
+  }
+  /* 2列目以降: 初期は非表示 */
+  .info-block table td:not(:first-child) {
+    display: none;
+    border-top: 1px dashed #e0e4e8;
+  }
+  /* 展開時に表示 */
+  .info-block table tr.expanded td:not(:first-child) {
+    display: block;
+  }
+  /* --- ラベル表示（3列テーブル: 項目/方法/判定） --- */
+  .info-block table td:nth-child(2)::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary-light);
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+  }
+  .info-block table td:nth-child(3)::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+  }
+  /* --- 5列テーブル用（防火設備: 番号/項目/事項/方法/基準） --- */
+  .info-block table td:nth-child(4)::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary-light);
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+  }
+  .info-block table td:nth-child(5)::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+  }
+  /* 5列テーブル: 項目名スパンを表示 */
+  .m-item {
+    display: inline;
+    font-size: 12px;
+    font-weight: 600;
+  }
 }
 
 /* === Genre selection === */
@@ -5832,6 +5942,9 @@ function showDetail(chId, itemId) {
   const container = document.getElementById('detailContent');
   container.innerHTML = `<h2>${item.title}</h2>` + item.content();
 
+  // モバイル用ラベルを付与
+  applyMobileLabels(container);
+
   switchView('detail');
   document.getElementById('headerTitle').textContent = item.title;
   document.getElementById('backBtn').classList.add('visible');
@@ -5965,6 +6078,61 @@ window.addEventListener('popstate', function(e) {
 // ========================================
 // 初期化
 // ========================================
+// ========================================
+// モバイルカード表示: テーブル行の展開/折りたたみ
+// ========================================
+document.addEventListener('click', function(e) {
+  const td = e.target.closest('td:first-child');
+  if (!td) return;
+  const tr = td.parentElement;
+  if (!tr || tr.querySelector('th')) return;
+  if (window.innerWidth > 768) return;
+  tr.classList.toggle('expanded');
+});
+
+// テーブルにdata-label属性を動的に付与する関数
+function applyMobileLabels(container) {
+  if (!container) return;
+  var tables = container.querySelectorAll('.info-block table');
+  tables.forEach(function(table) {
+    var headerRow = table.querySelector('tr:first-child');
+    if (!headerRow || !headerRow.querySelector('th')) return;
+    var headers = [];
+    headerRow.querySelectorAll('th').forEach(function(th) { headers.push(th.textContent.trim()); });
+    var is5col = headers.length >= 5;
+    var rows = table.querySelectorAll('tr');
+    var lastItemName = '';
+
+    for (var i = 1; i < rows.length; i++) {
+      var cells = rows[i].querySelectorAll('td');
+      if (cells.length === 0) continue;
+      // ヘッダー数とセル数の差（rowspanオフセット）
+      var offset = headers.length - cells.length;
+
+      // data-labelを各セルに付与（右揃えマッピングでrowspan対応）
+      cells.forEach(function(td, idx) {
+        var headerIdx = idx + offset;
+        if (headerIdx > 0 && headerIdx < headers.length) {
+          td.setAttribute('data-label', headers[headerIdx]);
+        }
+      });
+
+      // 5列テーブル: 1列目の番号に検査項目名を追加（モバイル用）
+      if (is5col) {
+        if (cells.length === headers.length && cells.length >= 2) {
+          lastItemName = cells[1].textContent.trim();
+        }
+        if (lastItemName && !cells[0].querySelector('.m-item')) {
+          var span = document.createElement('span');
+          span.className = 'm-item';
+          span.textContent = ' ' + lastItemName;
+          cells[0].appendChild(span);
+        }
+      }
+    }
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   // ジャンル選択画面を初期表示
   showGenre();
